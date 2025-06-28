@@ -13,12 +13,55 @@ impl Value {
         Value(Rc::new(RefCell::new(ValueInner::new(data))))
     }
 
+    pub fn new_with_name(data: f64, name: String) -> Self {
+        Value(Rc::new(RefCell::new(ValueInner::new_with_name(data, name))))
+    }
     pub fn data(&self) -> f64 {
         self.0.borrow().data
     }
 
     pub fn grad(&self) -> f64 {
         self.0.borrow().grad
+    }
+    pub fn set_grad(&self, grad: f64) {
+        self.0.borrow_mut().grad = grad;
+    }
+
+    pub fn backward(&self) {
+        // 构建计算图拓扑排序
+        let mut topo = Vec::new();
+        let mut visited = HashSet::new();
+        self.build_topo(&mut topo, &mut visited);
+
+        // # go one variable at a time and apply the chain rule to get its gradient
+        self.set_grad(1.0);
+        topo.reverse();
+
+        for node in topo.iter() {
+            println!("{:?}", &node.borrow());
+            if let Some(backward_fn) = &node.borrow()._backward {
+                backward_fn();
+            }
+        }
+    }
+
+    fn build_topo(
+        &self,
+        topo: &mut Vec<Rc<RefCell<ValueInner>>>,
+        visited: &mut HashSet<*const RefCell<ValueInner>>,
+    ) {
+        let ptr = Rc::as_ptr(&self.0) as *const RefCell<ValueInner>;
+        if visited.contains(&ptr) {
+            return;
+        }
+        visited.insert(ptr);
+
+        for prev in self.0.borrow()._prev.iter() {
+            if let Some(rc) = prev.0.upgrade() {
+                Value(rc).build_topo(topo, visited);
+            }
+        }
+        topo.push(self.0.clone());
     }
 }
 impl fmt::Debug for Value {
@@ -28,22 +71,21 @@ impl fmt::Debug for Value {
             .field("data", &inner.data)
             .field("grad", &inner.grad)
             .field("_op", &inner._op)
+            .field("name", &inner.name)
             .finish()
     }
 }
 
-impl Add for Value {
+impl Add for &Value {
     type Output = Value;
-    fn add(self, rhs: Value) -> Value {
+    fn add(self, rhs: &Value) -> Value {
         let out = Value::new(self.data() + rhs.data());
-        out.0
-            .borrow_mut()
-            ._prev
-            .insert(Prev(Rc::downgrade(&self.0)));
+        out.0.borrow_mut()._op = "+".to_string();
+        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&self.0)));
         out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
 
         let self_weak = Rc::downgrade(&self.0);
-        let rhs_weak = Rc::downgrade(&self.0);
+        let rhs_weak = Rc::downgrade(&rhs.0);
         let out_weak = Rc::downgrade(&out.0);
         out.0.borrow_mut()._backward = Some(Box::new(move || {
             if let (Some(self_rc), Some(other_rc), Some(out_rc)) =
@@ -59,25 +101,26 @@ impl Add for Value {
 }
 
 // 新增：实现 Node 与 f64 的加法
-impl Add<f64> for Value {
+impl Add<f64> for &Value {
     type Output = Value;
 
     fn add(self, rhs: f64) -> Value {
         let value = Value::new(rhs);
-        self.add(value)
+        self.add(&value)
     }
 }
 
 // 新增：实现 f64 + Node
-impl Add<Value> for f64 {
+impl Add<&Value> for f64 {
     type Output = Value;
 
-    fn add(self, rhs: Value) -> Value {
+    fn add(self, rhs: &Value) -> Value {
         rhs.add(self)
     }
 }
 
 struct ValueInner {
+    name: String,
     data: f64,
     grad: f64,
     _backward: Option<Box<dyn Fn()>>,
@@ -93,25 +136,54 @@ impl ValueInner {
             _backward: None,
             _prev: Default::default(),
             _op: Default::default(),
+            name: Default::default(),
+        };
+        inner
+    }
+    pub fn new_with_name(val: f64, name: String) -> ValueInner {
+        let inner = ValueInner {
+            data: val,
+            grad: 0.0,
+            _backward: None,
+            _prev: Default::default(),
+            _op: Default::default(),
+            name,
         };
         inner
     }
 }
 
+impl fmt::Debug for ValueInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let inner = self;
+        f.debug_struct("ValueInner")
+            .field("data", &inner.data)
+            .field("grad", &inner.grad)
+            .field("_op", &inner._op)
+            .field("name", &inner.name)
+            .finish()
+    }
+}
 // type Prev = Rc<RefCell<ValueInner>>;
 pub struct Prev(Weak<RefCell<ValueInner>>);
 
+impl Prev {
+    pub(crate) fn clone(&self) -> Prev {
+        Prev(self.0.clone())
+    }
+}
+
 impl Hash for Prev {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // 基于 Weak 指针本身的地址做哈希
-        let ptr = self.0.as_ptr() as *const ();
-        ptr.hash(state);
+        // Hash based on the address of the control block
+        self.0.as_ptr().hash(state);
     }
 }
 
 impl PartialEq for Prev {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0.upgrade().unwrap(), &other.0.upgrade().unwrap())
+        // Safely compares Weak pointers without unwrapping
+        Weak::ptr_eq(&self.0, &other.0)
     }
 }
 

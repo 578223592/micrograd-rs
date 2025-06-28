@@ -1,19 +1,16 @@
-use micrograd_rs::{ Value};
-use std::ops::Add;
+use micrograd_rs::Value;
 
 fn main() {
-    let node1 = Value::new(1.0);
-    let node2 = Value::new(1.0);
-    let node3 = node1.add(node2);
+    let node1 = Value::new_with_name(1.0, "node1".to_string());
+    let node2 = Value::new_with_name(1.0, "node2".to_string());
+    let node3 = &node1 + &node2;
+    println!("{:?}", node1);
+    println!("{:?}", node2);
     println!("{:?}", node3);
-    
-    let node1 = Value::new(1.0);
-    let node2 = 1.0;
-    let node3 = node1.add(node2);
-    println!("{:?}", node3);
-    
-    let node1 = Value::new(1.0);
-    let node2 = 1.0;
-    let node3 = node2 + node1;
+
+    node3.backward();
+
+    println!("{:?}", node1);
+    println!("{:?}", node2);
     println!("{:?}", node3);
 }
