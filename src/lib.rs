@@ -1,3 +1,5 @@
+mod math_cal;
+
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
@@ -76,48 +78,6 @@ impl fmt::Debug for Value {
     }
 }
 
-impl Add for &Value {
-    type Output = Value;
-    fn add(self, rhs: &Value) -> Value {
-        let out = Value::new(self.data() + rhs.data());
-        out.0.borrow_mut()._op = "+".to_string();
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&self.0)));
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
-
-        let self_weak = Rc::downgrade(&self.0);
-        let rhs_weak = Rc::downgrade(&rhs.0);
-        let out_weak = Rc::downgrade(&out.0);
-        out.0.borrow_mut()._backward = Some(Box::new(move || {
-            if let (Some(self_rc), Some(other_rc), Some(out_rc)) =
-                (self_weak.upgrade(), rhs_weak.upgrade(), out_weak.upgrade())
-            {
-                let out_grad = out_rc.borrow().grad;
-                self_rc.borrow_mut().grad += out_grad;
-                other_rc.borrow_mut().grad += out_grad;
-            }
-        }));
-        out
-    }
-}
-
-// 新增：实现 Node 与 f64 的加法
-impl Add<f64> for &Value {
-    type Output = Value;
-
-    fn add(self, rhs: f64) -> Value {
-        let value = Value::new(rhs);
-        self.add(&value)
-    }
-}
-
-// 新增：实现 f64 + Node
-impl Add<&Value> for f64 {
-    type Output = Value;
-
-    fn add(self, rhs: &Value) -> Value {
-        rhs.add(self)
-    }
-}
 
 struct ValueInner {
     name: String,
