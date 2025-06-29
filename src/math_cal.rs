@@ -44,16 +44,6 @@ impl Add for &Value {
     }
 }
 
-//
-// // 新增：实现 f64 + Node
-// impl Add<&Value> for f64 {
-//     type Output = Value;
-//
-//     fn add(self, rhs: &Value) -> Value {
-//         rhs.add(self)
-//     }
-// }
-
 impl<T: Into<f64>> Add<T> for &Value {
     type Output = Value;
     fn add(self, rhs: T) -> Value {
@@ -84,16 +74,6 @@ impl Sub for &Value {
         out
     }
 }
-
-//
-// // 新增：实现 f64 + Node
-// impl Add<&Value> for f64 {
-//     type Output = Value;
-//
-//     fn add(self, rhs: &Value) -> Value {
-//         rhs.add(self)
-//     }
-// }
 
 impl<T: Into<f64>> Sub<T> for &Value {
     type Output = Value;
@@ -155,16 +135,6 @@ impl Div for &Value {
     }
 }
 
-//
-// // 新增：实现 f64 + Node
-// impl Add<&Value> for f64 {
-//     type Output = Value;
-//
-//     fn add(self, rhs: &Value) -> Value {
-//         rhs.add(self)
-//     }
-// }
-
 impl<T: Into<f64>> Div<T> for &Value {
     type Output = Value;
     fn div(self, rhs: T) -> Value {
@@ -195,10 +165,11 @@ impl Value {
                 (self_weak.upgrade(), rhs_weak.upgrade(), out_weak.upgrade())
             {
                 let out_grad = out_rc.borrow().grad;
+                let other_data = other_rc.borrow().data;
                 let mut sb = self_rc.borrow_mut();
                 let mut ob = other_rc.borrow_mut();
-                sb.grad += ob.data * sb.data.powf(ob.data - 1.0) * out_grad;
-                ob.grad += sb.data.powf(ob.data) * sb.data.ln() * out_grad;
+                sb.grad += ob.data * sb.data.powf(other_data - 1.0) * out_grad;
+                ob.grad += sb.data.powf(other_data) * sb.data.ln() * out_grad;
             }
         }));
         out

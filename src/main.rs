@@ -111,41 +111,8 @@ fn plot_pred_result(pic_name: &str, dataset: &MakeMoonDataset, mlp: &MLP) {
         }
     }
 
-    // // 预测网格点的分类结果（模拟）
-    // let mut z = vec![];
-    // for i in 0..x_vals.len() {
-    //     for j in 0..y_vals.len() {
-    //         let x = xx[(i, j)];
-    //         let y = yy[(i, j)];
-    //
-    //         // 模拟分类器预测函数（替换为实际模型逻辑）
-    //         let score = x; // 示例逻辑：圆形边界
-    //         if (y - x * x).abs() < 0.01 {
-    //             z.push((x, y));
-    //             continue;
-    //         }
-    //     }
-    // }
-
-    // let pred_res_points: Vec<(f64, f64)> = (0..dataset.len())
-    //     .filter(|&i| {
-    //         // let (x, _) = dataset.get(i);
-    //         // let pred = mlp.forward(&x);
-    //         // return pred[0].data() > 0.0;
-    //         return true;
-    //     })
-    //     .map(|i| {
-    //         let (x, _) = dataset.get(i);
-    //         (x[0].data(), x[1].data())
-    //     })
-    //     .collect();
-
     // 绘制等高线
     // 绘制决策边界区域
-    // let _ = chart.draw_series(LineSeries::new(
-    //     pred_res_points.iter().map(|&point| point),
-    //     &CYAN,
-    // ));
     let _ = chart.draw_series(LineSeries::new(
         pred_res_points.iter().map(|&point| point),
         &CYAN,
@@ -266,7 +233,6 @@ fn cal_loss(out: &Vec<Value>, y: &Value) -> Value {
     if out.len() != 1 {
         panic!("out.len()!=1");
     }
-    // let out = &Value::new(1.0) - &Value::new(2.0) * &out[0])*&(p1 - &Value::new(0.5))
     let loss = &Value::new(1.0) - &(&out[0] * y);
     loss.relu()
 }
