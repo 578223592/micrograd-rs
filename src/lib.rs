@@ -1,14 +1,27 @@
+mod data;
 mod math_cal;
+pub mod nn;
 
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::ops::Add;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
+
+// 重新导出结构体，使其对 crate 外部可见
+pub use data::MakeMoonDataset;
+
+pub use nn::MLP;
 
 #[derive()]
 pub struct Value(Rc<RefCell<ValueInner>>);
+
+impl Value {
+    pub(crate) fn clone(&self) -> Value {
+        let rc = self.0.clone();
+        Value(rc)
+    }
+}
 
 impl Value {
     pub fn new(data: f64) -> Self {
@@ -20,6 +33,14 @@ impl Value {
     }
     pub fn data(&self) -> f64 {
         self.0.borrow().data
+    }
+
+    pub fn set_data(&self, data: f64) {
+        self.0.borrow_mut().data = data;
+    }
+
+    pub fn add_data(&self, add_data: f64) {
+        self.0.borrow_mut().data += add_data;
     }
 
     pub fn grad(&self) -> f64 {
@@ -40,7 +61,7 @@ impl Value {
         topo.reverse();
 
         for node in topo.iter() {
-            println!("{:?}", &node.borrow());
+            // println!("{:?}", &node.borrow());
             if let Some(backward_fn) = &node.borrow()._backward {
                 backward_fn();
             }
@@ -59,9 +80,9 @@ impl Value {
         visited.insert(ptr);
 
         for prev in self.0.borrow()._prev.iter() {
-            if let Some(rc) = prev.0.upgrade() {
-                Value(rc).build_topo(topo, visited);
-            }
+            // if let rc = prev.0 {
+            Value(prev.0.clone()).build_topo(topo, visited);
+            // }
         }
         topo.push(self.0.clone());
     }
@@ -77,7 +98,6 @@ impl fmt::Debug for Value {
             .finish()
     }
 }
-
 
 struct ValueInner {
     name: String,
@@ -124,12 +144,12 @@ impl fmt::Debug for ValueInner {
             .finish()
     }
 }
-// type Prev = Rc<RefCell<ValueInner>>;
-pub struct Prev(Weak<RefCell<ValueInner>>);
+// use RC rather than weak , because we need to keep the ValueInner alive,or the ValueInner will be dropped automatically.
+pub struct Prev(Rc<RefCell<ValueInner>>);
 
 impl Prev {
-    pub(crate) fn clone(&self) -> Prev {
-        Prev(self.0.clone())
+    pub fn value(&self) -> Value {
+        Value(self.0.clone())
     }
 }
 
@@ -143,7 +163,7 @@ impl Hash for Prev {
 impl PartialEq for Prev {
     fn eq(&self, other: &Self) -> bool {
         // Safely compares Weak pointers without unwrapping
-        Weak::ptr_eq(&self.0, &other.0)
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 

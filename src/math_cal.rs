@@ -2,17 +2,32 @@ use crate::{Prev, Value};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
+impl Value {
+    pub fn relu(&self) -> Value {
+        let out = Value::new_with_name(self.data().max(0.0), "ReLU".to_string());
+        out.0.borrow_mut()._prev.insert(Prev(self.0.clone()));
+
+        let self_weak = Rc::downgrade(&self.0);
+        let out_weak = Rc::downgrade(&out.0);
+        out.0.borrow_mut()._backward = Some(Box::new(move || {
+            if let (Some(self_rc), Some(out_rc)) = (self_weak.upgrade(), out_weak.upgrade()) {
+                let out_grad = out_rc.borrow().grad;
+                if out_grad >= 0.0 {
+                    self_rc.borrow_mut().grad += out_grad;
+                }
+            }
+        }));
+        out
+    }
+}
+
 impl Add for &Value {
     type Output = Value;
     fn add(self, rhs: &Value) -> Value {
         let out = Value::new(self.data() + rhs.data());
         out.0.borrow_mut()._op = "+".to_string();
-        out.0
-            .borrow_mut()
-            ._prev
-            .insert(Prev(Rc::downgrade(&self.0)));
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
-
+        out.0.borrow_mut()._prev.insert(Prev(self.0.clone()));
+        out.0.borrow_mut()._prev.insert(Prev(rhs.0.clone()));
         let self_weak = Rc::downgrade(&self.0);
         let rhs_weak = Rc::downgrade(&rhs.0);
         let out_weak = Rc::downgrade(&out.0);
@@ -52,12 +67,8 @@ impl Sub for &Value {
     fn sub(self, rhs: &Value) -> Value {
         let out = Value::new(self.data() - rhs.data());
         out.0.borrow_mut()._op = "-".to_string();
-        out.0
-            .borrow_mut()
-            ._prev
-            .insert(Prev(Rc::downgrade(&self.0)));
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
-
+        out.0.borrow_mut()._prev.insert(Prev(self.0.clone()));
+        out.0.borrow_mut()._prev.insert(Prev(rhs.0.clone()));
         let self_weak = Rc::downgrade(&self.0);
         let rhs_weak = Rc::downgrade(&rhs.0);
         let out_weak = Rc::downgrade(&out.0);
@@ -94,15 +105,12 @@ impl<T: Into<f64>> Sub<T> for &Value {
 
 impl Mul for &Value {
     type Output = Value;
+    //todo self 和rhs是同一个valueInner的话会panic
     fn mul(self, rhs: &Value) -> Self::Output {
         let out = Value::new(self.data() * rhs.data());
         out.0.borrow_mut()._op = "*".to_string();
-        out.0
-            .borrow_mut()
-            ._prev
-            .insert(Prev(Rc::downgrade(&self.0)));
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
-
+        out.0.borrow_mut()._prev.insert(Prev(self.0.clone()));
+        out.0.borrow_mut()._prev.insert(Prev(rhs.0.clone()));
         let self_weak = Rc::downgrade(&self.0);
         let rhs_weak = Rc::downgrade(&rhs.0);
         let out_weak = Rc::downgrade(&out.0);
@@ -110,9 +118,11 @@ impl Mul for &Value {
             if let (Some(self_rc), Some(other_rc), Some(out_rc)) =
                 (self_weak.upgrade(), rhs_weak.upgrade(), out_weak.upgrade())
             {
+                let other_data = other_rc.borrow().data;
+                let self_data = self_rc.borrow().data;
                 let out_grad = out_rc.borrow().grad;
-                self_rc.borrow_mut().grad += out_grad * other_rc.borrow().data;
-                other_rc.borrow_mut().grad += out_grad * self_rc.borrow().data;
+                self_rc.borrow_mut().grad += out_grad * other_data;
+                other_rc.borrow_mut().grad += out_grad * self_data;
             }
         }));
         out
@@ -140,10 +150,8 @@ impl<T: Into<f64>> Mul<T> for &Value {
 impl Div for &Value {
     type Output = Value;
     fn div(self, rhs: &Value) -> Value {
-        let value1 = Value::new_with_name(-1.0, "pow -1.0".to_string());
-        let value2 = rhs.pow_i(&value1);
-        let value = self.mul(&value2);
-        value //todo 临时变量会被删除，导致链式法则无法向前传递，因此需要用强指针  2025年06月29日01:15:26
+        let value2 = rhs.pow_i(&Value::new_with_name(-1.0, "pow -1.0".to_string()));
+        self.mul(&value2)
     }
 }
 
@@ -176,11 +184,8 @@ impl Value {
     pub fn pow_i(&self, rhs: &Value) -> Value {
         let out = Value::new(self.data().powf(rhs.data()));
         out.0.borrow_mut()._op = "pow".to_string();
-        out.0
-            .borrow_mut()
-            ._prev
-            .insert(Prev(Rc::downgrade(&self.0)));
-        out.0.borrow_mut()._prev.insert(Prev(Rc::downgrade(&rhs.0)));
+        out.0.borrow_mut()._prev.insert(Prev(self.0.clone()));
+        out.0.borrow_mut()._prev.insert(Prev(rhs.0.clone()));
 
         let self_weak = Rc::downgrade(&self.0);
         let rhs_weak = Rc::downgrade(&rhs.0);
